@@ -11,6 +11,7 @@ import { TemplateStepModule } from './template-step/template-step.module';
 import { InstanceModule } from './instance/instance.module';
 import { Todo } from './todo/todo.entity';
 import { TodoModule } from './todo/todo.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { TodoModule } from './todo/todo.module';
     TemplateStepModule,
     InstanceModule,
     TodoModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],

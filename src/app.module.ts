@@ -9,13 +9,15 @@ import { InstanceStep } from './instance/instance-step.entity';
 import { TemplatesModule } from './template/template.module';
 import { TemplateStepModule } from './template-step/template-step.module';
 import { InstanceModule } from './instance/instance.module';
+import { Todo } from './todo/todo.entity';
+import { TodoModule } from './todo/todo.module';
 
 @Module({
   imports: [
     TypeOrmModule.forRoot({
       type: 'better-sqlite3',
       database: 'checklist.db',
-      entities: [Template, TemplateStep, Instance, InstanceStep],
+      entities: [Template, TemplateStep, Instance, InstanceStep, Todo],
       synchronize: false,
       migrations: ['dist/database/migrations/*.js'],
       migrationsRun: false,
@@ -23,6 +25,7 @@ import { InstanceModule } from './instance/instance.module';
     TemplatesModule,
     TemplateStepModule,
     InstanceModule,
+    TodoModule,
   ],
   controllers: [AppController],
   providers: [AppService],

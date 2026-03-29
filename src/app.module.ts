@@ -17,7 +17,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
   imports: [
     TypeOrmModule.forRoot({
       type: 'better-sqlite3',
-      database: 'checklist.db',
+      database: process.env.DB_PATH ?? 'checklist.db',
       entities: [Template, TemplateStep, Instance, InstanceStep, Todo],
       synchronize: false,
       migrations: ['dist/database/migrations/*.js'],

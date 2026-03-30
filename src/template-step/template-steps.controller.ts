@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -20,6 +21,11 @@ import { MoveTemplateStepDto } from './dto/move-template-step.dto';
 @Controller('templates/:templateId/steps')
 export class TemplateStepsController {
   constructor(private readonly stepsService: TemplateStepsService) {}
+
+  @Get()
+  findAll(@Param('templateId', ParseIntPipe) templateId: number) {
+    return this.stepsService.findAll(templateId);
+  }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)

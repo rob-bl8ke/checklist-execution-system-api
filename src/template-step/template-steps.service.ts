@@ -20,6 +20,14 @@ export class TemplateStepsService {
     private readonly templateRepo: Repository<Template>,
   ) {}
 
+  async findAll(templateId: number): Promise<TemplateStep[]> {
+    await this.assertTemplateExists(templateId);
+    return this.stepRepo.find({
+      where: { templateId },
+      order: { position: 'ASC' },
+    });
+  }
+
   private async assertTemplateExists(templateId: number): Promise<void> {
     const exists = await this.templateRepo.existsBy({ id: templateId });
     if (!exists) {

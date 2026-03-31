@@ -84,6 +84,8 @@ describe('InstancesService', () => {
       mockTemplateRepo.findOne.mockResolvedValue({
         id: 1,
         steps: templateSteps,
+        variablePrefix: null,
+        variableSuffix: null,
       });
 
       const savedInstance = { id: 10, nextStepId: null, templateId: 1, name: 'Run A', variables: { service: 'api' }, status: InstanceStatus.IN_PROGRESS };
@@ -107,6 +109,169 @@ describe('InstancesService', () => {
       expect(mockQr.commitTransaction).toHaveBeenCalled();
       expect(mockQr.rollbackTransaction).not.toHaveBeenCalled();
       expect(result.steps).toHaveLength(2);
+    });
+
+    it('uses custom delimiters when template has variablePrefix and variableSuffix', async () => {
+      const templateSteps = [
+        { id: 1, title: 'Step 1', instructions: 'Deploy @{service} to @{env}', position: 100 },
+      ];
+      mockTemplateRepo.findOne.mockResolvedValue({
+        id: 1,
+        steps: templateSteps,
+        variablePrefix: '@{',
+        variableSuffix: '}',
+      });
+
+      const savedInstance = {
+        id: 20, nextStepId: null, templateId: 1,
+        name: 'Custom Run', variables: { service: 'api', env: 'prod' },
+        status: InstanceStatus.IN_PROGRESS,
+      };
+      const savedStep = {
+        id: 201, instanceId: 20, stepOrder: 1, title: 'Step 1',
+        renderedInstructions: 'Deploy api to prod', completed: false,
+      };
+
+      mockQr.manager.create
+        .mockReturnValueOnce(savedInstance)
+        .mockReturnValueOnce(savedStep);
+
+      mockQr.manager.save
+        .mockResolvedValueOnce(savedInstance)
+        .mockResolvedValueOnce(savedStep)
+        .mockResolvedValueOnce({ ...savedInstance, nextStepId: 201 });
+
+      await service.create({ templateId: 1, name: 'Custom Run', variables: { service: 'api', env: 'prod' } });
+
+      // Verify the rendered instructions passed to create contain the substituted values
+      const stepCreateCall = mockQr.manager.create.mock.calls[1];
+      expect(stepCreateCall[1].renderedInstructions).toBe('Deploy api to prod');
+    });
+
+    it('leaves custom-delimiter placeholders intact when variable is missing', async () => {
+      const templateSteps = [
+        { id: 1, title: 'Step 1', instructions: 'Deploy @{service}', position: 100 },
+      ];
+      mockTemplateRepo.findOne.mockResolvedValue({
+        id: 1,
+        steps: templateSteps,
+        variablePrefix: '@{',
+        variableSuffix: '}',
+      });
+
+      const savedInstance = {
+        id: 30, nextStepId: null, templateId: 1,
+        name: 'Missing Var', variables: {},
+        status: InstanceStatus.IN_PROGRESS,
+      };
+      const savedStep = {
+        id: 301, instanceId: 30, stepOrder: 1, title: 'Step 1',
+        renderedInstructions: 'Deploy @{service}', completed: false,
+      };
+
+      mockQr.manager.create
+        .mockReturnValueOnce(savedInstance)
+        .mockReturnValueOnce(savedStep);
+      mockQr.manager.save
+        .mockResolvedValueOnce(savedInstance)
+        .mockResolvedValueOnce(savedStep)
+        .mockResolvedValueOnce({ ...savedInstance, nextStepId: 301 });
+
+      await service.create({ templateId: 1, name: 'Missing Var', variables: {} });
+
+      const stepCreateCall = mockQr.manager.create.mock.calls[1];
+      // Variables map is empty so renderInstructions returns the template unchanged
+      expect(stepCreateCall[1].renderedInstructions).toBe('Deploy @{service}');
+    });
+
+    it('applies a single pipe transform when rendering step instructions', async () => {
+      const templateSteps = [
+        { id: 1, title: 'Step 1', instructions: 'Service: {{service | upper}}', position: 100 },
+      ];
+      mockTemplateRepo.findOne.mockResolvedValue({
+        id: 1, steps: templateSteps, variablePrefix: null, variableSuffix: null,
+      });
+
+      const savedInstance = {
+        id: 40, nextStepId: null, templateId: 1,
+        name: 'Transform Run', variables: { service: 'api' },
+        status: InstanceStatus.IN_PROGRESS,
+      };
+      const savedStep = {
+        id: 401, instanceId: 40, stepOrder: 1, title: 'Step 1',
+        renderedInstructions: 'Service: API', completed: false,
+      };
+
+      mockQr.manager.create.mockReturnValueOnce(savedInstance).mockReturnValueOnce(savedStep);
+      mockQr.manager.save
+        .mockResolvedValueOnce(savedInstance)
+        .mockResolvedValueOnce(savedStep)
+        .mockResolvedValueOnce({ ...savedInstance, nextStepId: 401 });
+
+      await service.create({ templateId: 1, name: 'Transform Run', variables: { service: 'api' } });
+
+      const stepCreateCall = mockQr.manager.create.mock.calls[1];
+      expect(stepCreateCall[1].renderedInstructions).toBe('Service: API');
+    });
+
+    it('applies chained pipe transforms when rendering step instructions', async () => {
+      const templateSteps = [
+        { id: 1, title: 'Step 1', instructions: 'Path: {{title | remove_spaces | lower}}', position: 100 },
+      ];
+      mockTemplateRepo.findOne.mockResolvedValue({
+        id: 1, steps: templateSteps, variablePrefix: null, variableSuffix: null,
+      });
+
+      const savedInstance = {
+        id: 50, nextStepId: null, templateId: 1,
+        name: 'Chain Run', variables: { title: 'My Service' },
+        status: InstanceStatus.IN_PROGRESS,
+      };
+      const savedStep = {
+        id: 501, instanceId: 50, stepOrder: 1, title: 'Step 1',
+        renderedInstructions: 'Path: myservice', completed: false,
+      };
+
+      mockQr.manager.create.mockReturnValueOnce(savedInstance).mockReturnValueOnce(savedStep);
+      mockQr.manager.save
+        .mockResolvedValueOnce(savedInstance)
+        .mockResolvedValueOnce(savedStep)
+        .mockResolvedValueOnce({ ...savedInstance, nextStepId: 501 });
+
+      await service.create({ templateId: 1, name: 'Chain Run', variables: { title: 'My Service' } });
+
+      const stepCreateCall = mockQr.manager.create.mock.calls[1];
+      expect(stepCreateCall[1].renderedInstructions).toBe('Path: myservice');
+    });
+
+    it('applies parameterized transform when rendering step instructions', async () => {
+      const templateSteps = [
+        { id: 1, title: 'Step 1', instructions: 'Version: {{version | replace(".", "_")}}', position: 100 },
+      ];
+      mockTemplateRepo.findOne.mockResolvedValue({
+        id: 1, steps: templateSteps, variablePrefix: null, variableSuffix: null,
+      });
+
+      const savedInstance = {
+        id: 60, nextStepId: null, templateId: 1,
+        name: 'Param Run', variables: { version: '1.2.3' },
+        status: InstanceStatus.IN_PROGRESS,
+      };
+      const savedStep = {
+        id: 601, instanceId: 60, stepOrder: 1, title: 'Step 1',
+        renderedInstructions: 'Version: 1_2_3', completed: false,
+      };
+
+      mockQr.manager.create.mockReturnValueOnce(savedInstance).mockReturnValueOnce(savedStep);
+      mockQr.manager.save
+        .mockResolvedValueOnce(savedInstance)
+        .mockResolvedValueOnce(savedStep)
+        .mockResolvedValueOnce({ ...savedInstance, nextStepId: 601 });
+
+      await service.create({ templateId: 1, name: 'Param Run', variables: { version: '1.2.3' } });
+
+      const stepCreateCall = mockQr.manager.create.mock.calls[1];
+      expect(stepCreateCall[1].renderedInstructions).toBe('Version: 1_2_3');
     });
   });
 

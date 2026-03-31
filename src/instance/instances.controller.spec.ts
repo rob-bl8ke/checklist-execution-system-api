@@ -338,4 +338,118 @@ describe('Instances API (integration)', () => {
       .send({ status: 'INVALID_STATUS' })
       .expect(400);
   });
+
+  // ---------------------------------------------------------------------------
+  // Custom delimiters — end-to-end
+  // ---------------------------------------------------------------------------
+
+  it('POST renders variables using custom @{ } delimiters', async () => {
+    // Create template with custom delimiters
+    const tmplRes = await request(app.getHttpServer())
+      .post('/api/templates')
+      .send({ name: 'Custom Delimiters', variablePrefix: '@{', variableSuffix: '}' })
+      .expect(201);
+    const tmplId: number = tmplRes.body.id;
+
+    await addStep(tmplId, 'Deploy', 'docker run @{service}:@{version}');
+    await addStep(tmplId, 'Clean', 'rm -rf @{tmpDir}');
+
+    const inst = await createInstance(tmplId, 'Custom Run', {
+      service: 'my-api',
+      version: '2.0',
+      tmpDir: '/tmp/build',
+    });
+
+    expect(inst.steps[0].renderedInstructions).toBe('docker run my-api:2.0');
+    expect(inst.steps[1].renderedInstructions).toBe('rm -rf /tmp/build');
+  });
+
+  it('POST leaves {{ }} literal unchanged when custom delimiters are @{ }', async () => {
+    const tmplRes = await request(app.getHttpServer())
+      .post('/api/templates')
+      .send({ name: 'Helm Template', variablePrefix: '@{', variableSuffix: '}' })
+      .expect(201);
+    const tmplId: number = tmplRes.body.id;
+
+    // This step has a Helm-style {{ }} value that should pass through untouched,
+    // and an @{ } variable that should be substituted
+    await addStep(tmplId, 'Helm', '{{.Values.image}} and @{myVar}');
+
+    const inst = await createInstance(tmplId, 'Helm Run', { myVar: 'resolved' });
+
+    expect(inst.steps[0].renderedInstructions).toBe('{{.Values.image}} and resolved');
+  });
+
+  it('POST leaves unmatched custom-delimiter placeholders intact', async () => {
+    const tmplRes = await request(app.getHttpServer())
+      .post('/api/templates')
+      .send({ name: 'Partial', variablePrefix: '@{', variableSuffix: '}' })
+      .expect(201);
+    const tmplId: number = tmplRes.body.id;
+
+    await addStep(tmplId, 'Step', 'Use @{unknownVar} here');
+    const inst = await createInstance(tmplId, 'Partial Run', { other: 'x' });
+
+    expect(inst.steps[0].renderedInstructions).toBe('Use @{unknownVar} here');
+  });
+
+  // ---------------------------------------------------------------------------
+  // Pipe transforms — end-to-end
+  // ---------------------------------------------------------------------------
+
+  it('POST applies single pipe transform during rendering', async () => {
+    const tmplRes = await request(app.getHttpServer())
+      .post('/api/templates')
+      .send({ name: 'Upper Transform' })
+      .expect(201);
+    const tmplId: number = tmplRes.body.id;
+
+    await addStep(tmplId, 'Deploy', 'Service: {{service | upper}} version {{version}}');
+
+    const inst = await createInstance(tmplId, 'Upper Run', { service: 'api', version: '1.0' });
+
+    expect(inst.steps[0].renderedInstructions).toBe('Service: API version 1.0');
+  });
+
+  it('POST applies parameterized transform replace(".", "_") during rendering', async () => {
+    const tmplRes = await request(app.getHttpServer())
+      .post('/api/templates')
+      .send({ name: 'Replace Transform' })
+      .expect(201);
+    const tmplId: number = tmplRes.body.id;
+
+    await addStep(tmplId, 'Tag', 'Deploy {{service | upper}} v{{version | replace(".", "_")}}');
+
+    const inst = await createInstance(tmplId, 'Replace Run', { service: 'api', version: '1.2.3' });
+
+    expect(inst.steps[0].renderedInstructions).toBe('Deploy API v1_2_3');
+  });
+
+  it('POST leaves placeholder intact when transform is unknown', async () => {
+    const tmplRes = await request(app.getHttpServer())
+      .post('/api/templates')
+      .send({ name: 'Unknown Transform' })
+      .expect(201);
+    const tmplId: number = tmplRes.body.id;
+
+    await addStep(tmplId, 'Step', 'Value: {{service | nonexistent}}');
+
+    const inst = await createInstance(tmplId, 'Unknown Run', { service: 'api' });
+
+    expect(inst.steps[0].renderedInstructions).toBe('Value: {{service | nonexistent}}');
+  });
+
+  it('POST renders default fallback when variable is missing', async () => {
+    const tmplRes = await request(app.getHttpServer())
+      .post('/api/templates')
+      .send({ name: 'Default Transform' })
+      .expect(201);
+    const tmplId: number = tmplRes.body.id;
+
+    await addStep(tmplId, 'Step', 'Note: {{optional | default("N/A")}}');
+
+    const inst = await createInstance(tmplId, 'Default Run', {});
+
+    expect(inst.steps[0].renderedInstructions).toBe('Note: N/A');
+  });
 });

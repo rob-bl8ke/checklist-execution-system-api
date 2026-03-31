@@ -19,6 +19,12 @@ export class Template {
   @Column({ type: 'text', nullable: true })
   description: string | null;
 
+  @Column({ name: 'variable_prefix', type: 'text', nullable: true })
+  variablePrefix: string | null;
+
+  @Column({ name: 'variable_suffix', type: 'text', nullable: true })
+  variableSuffix: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

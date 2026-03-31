@@ -55,7 +55,7 @@ describe('TemplatesService', () => {
 
   describe('findOne', () => {
     it('returns the template when found', async () => {
-      const template = { id: 1, name: 'T', steps: [] } as Template;
+      const template = { id: 1, name: 'T', steps: [], description: null, variablePrefix: null, variableSuffix: null } as unknown as Template;
       mockRepo.findOne.mockResolvedValue(template);
       await expect(service.findOne(1)).resolves.toBe(template);
     });
@@ -80,7 +80,7 @@ describe('TemplatesService', () => {
 
   describe('update', () => {
     it('updates name and returns the saved template', async () => {
-      const template = { id: 1, name: 'Old', description: null, steps: [] } as Template;
+      const template = { id: 1, name: 'Old', description: null, steps: [], variablePrefix: null, variableSuffix: null } as unknown as Template;
       const saved = { ...template, name: 'New' } as Template;
       mockRepo.findOne.mockResolvedValue(template);
       mockRepo.save.mockResolvedValue(saved);
@@ -99,7 +99,7 @@ describe('TemplatesService', () => {
 
   describe('remove', () => {
     it('removes the template via ORM cascade', async () => {
-      const template = { id: 1, name: 'T', steps: [] } as Template;
+      const template = { id: 1, name: 'T', steps: [], description: null, variablePrefix: null, variableSuffix: null } as unknown as Template;
       mockRepo.findOne.mockResolvedValue(template);
       mockRepo.remove.mockResolvedValue(template);
       await expect(service.remove(1)).resolves.toBeUndefined();

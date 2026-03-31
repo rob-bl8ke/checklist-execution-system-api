@@ -170,4 +170,79 @@ describe('Templates API (integration)', () => {
     const found = listRes.body.find((t: { id: number }) => t.id === tmpl.body.id);
     expect(found).toBeUndefined();
   });
+
+  // ---------------------------------------------------------------------------
+  // Custom delimiter fields
+  // ---------------------------------------------------------------------------
+
+  it('POST /api/templates persists variablePrefix and variableSuffix', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/templates')
+      .send({ name: 'Delimited', variablePrefix: '@{', variableSuffix: '}' })
+      .expect(201);
+
+    expect(res.body.variablePrefix).toBe('@{');
+    expect(res.body.variableSuffix).toBe('}');
+  });
+
+  it('GET /api/templates/:id returns variablePrefix and variableSuffix', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/api/templates')
+      .send({ name: 'With Delimiters', variablePrefix: '<%', variableSuffix: '%>' })
+      .expect(201);
+
+    const res = await request(app.getHttpServer())
+      .get(`/api/templates/${created.body.id}`)
+      .expect(200);
+
+    expect(res.body.variablePrefix).toBe('<%');
+    expect(res.body.variableSuffix).toBe('%>');
+  });
+
+  it('GET /api/templates/:id returns null for variablePrefix and variableSuffix when not set', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/api/templates')
+      .send({ name: 'No Delimiters' })
+      .expect(201);
+
+    const res = await request(app.getHttpServer())
+      .get(`/api/templates/${created.body.id}`)
+      .expect(200);
+
+    expect(res.body.variablePrefix).toBeNull();
+    expect(res.body.variableSuffix).toBeNull();
+  });
+
+  it('PUT /api/templates/:id updates delimiter fields', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/api/templates')
+      .send({ name: 'Update Me' })
+      .expect(201);
+
+    const res = await request(app.getHttpServer())
+      .put(`/api/templates/${created.body.id}`)
+      .send({ variablePrefix: '@{', variableSuffix: '}' })
+      .expect(200);
+
+    expect(res.body.variablePrefix).toBe('@{');
+    expect(res.body.variableSuffix).toBe('}');
+  });
+
+  it('POST /api/templates returns 400 when only variablePrefix is provided', () =>
+    request(app.getHttpServer())
+      .post('/api/templates')
+      .send({ name: 'Bad Delimiters', variablePrefix: '@{' })
+      .expect(400));
+
+  it('POST /api/templates returns 400 when only variableSuffix is provided', () =>
+    request(app.getHttpServer())
+      .post('/api/templates')
+      .send({ name: 'Bad Delimiters', variableSuffix: '}' })
+      .expect(400));
+
+  it('POST /api/templates returns 400 when variablePrefix exceeds 10 chars', () =>
+    request(app.getHttpServer())
+      .post('/api/templates')
+      .send({ name: 'Too Long', variablePrefix: '{{{{{{{{{{{{', variableSuffix: '}}' })
+      .expect(400));
 });

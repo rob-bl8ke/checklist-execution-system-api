@@ -12,6 +12,8 @@ import { Template } from '../template/template.entity';
 import { CreateInstanceDto } from './dto/create-instance.dto';
 import { CompleteStepDto } from './dto/complete-step.dto';
 import { UpdateInstanceStatusDto } from './dto/update-instance-status.dto';
+import { escapeRegex } from '../common/escape-regex';
+import { evaluate } from './transform-pipeline';
 
 export interface NextStepSummary {
   id: number;
@@ -76,6 +78,8 @@ export class InstancesService {
       const savedInstance = await qr.manager.save(Instance, instance);
 
       // 2. Copy template steps as instance steps
+      const prefix = template.variablePrefix ?? '{{';
+      const suffix = template.variableSuffix ?? '}}';
       const instanceSteps: InstanceStep[] = [];
       for (let i = 0; i < template.steps.length; i++) {
         const ts = template.steps[i];
@@ -87,6 +91,8 @@ export class InstancesService {
           renderedInstructions: this.renderInstructions(
             ts.instructions,
             dto.variables ?? null,
+            prefix,
+            suffix,
           ),
           completed: false,
           completedAt: null,
@@ -248,12 +254,19 @@ export class InstancesService {
   private renderInstructions(
     template: string | null,
     variables: Record<string, string> | null,
+    prefix = '{{',
+    suffix = '}}',
   ): string | null {
     if (!template) return null;
-    if (!variables || Object.keys(variables).length === 0) return template;
+    if (!variables) return template;
+    const regex = new RegExp(
+      escapeRegex(prefix) + '(.*?)' + escapeRegex(suffix),
+      'g',
+    );
     return template.replace(
-      /{{(.*?)}}/g,
-      (_, key: string) => variables[key.trim()] ?? `{{${key}}}`,
+      regex,
+      (original, capturedContent: string) =>
+        evaluate(capturedContent, variables) ?? original,
     );
   }
 }

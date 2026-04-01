@@ -5,6 +5,7 @@ import { Instance } from '../instance/instance.entity';
 import { InstanceStep } from '../instance/instance-step.entity';
 import { InstanceStatus } from '../instance/enums/instance-status.enum';
 import { Todo } from '../todo/todo.entity';
+import { RemindersService, ReminderAgendaItem } from '../reminder/reminders.service';
 
 export interface DashboardNextStep {
   id: number;
@@ -22,6 +23,10 @@ export interface DashboardRun {
 export interface DashboardResponse {
   runs: DashboardRun[];
   todos: Todo[];
+  reminders: {
+    dueNow: ReminderAgendaItem[];
+    upcoming: ReminderAgendaItem[];
+  };
 }
 
 @Injectable()
@@ -33,9 +38,10 @@ export class DashboardService {
     private readonly stepRepo: Repository<InstanceStep>,
     @InjectRepository(Todo)
     private readonly todoRepo: Repository<Todo>,
+    private readonly remindersService: RemindersService,
   ) {}
 
-  async getToday(): Promise<DashboardResponse> {
+  async getToday(upcomingDays = 7): Promise<DashboardResponse> {
     // Fetch all IN_PROGRESS instances with their steps (for progress counts)
     const instances = await this.instanceRepo.find({
       where: { status: InstanceStatus.IN_PROGRESS },
@@ -87,9 +93,10 @@ export class DashboardService {
     const runs: DashboardRun[] = instances.map((instance) => {
       const total = instance.steps.length;
       const completed = instance.steps.filter((s) => s.completed).length;
-      const nextStep = instance.nextStepId != null
-        ? (nextStepMap.get(instance.id) ?? null)
-        : null;
+      const nextStep =
+        instance.nextStepId != null
+          ? (nextStepMap.get(instance.id) ?? null)
+          : null;
 
       return {
         id: instance.id,
@@ -110,6 +117,31 @@ export class DashboardService {
       order: { createdAt: 'DESC' },
     });
 
-    return { runs, todos };
+    // Reminder occurrences
+    const today = new Date().toISOString().slice(0, 10);
+    const horizonMs =
+      new Date(`${today}T00:00:00Z`).getTime() + upcomingDays * 86_400_000;
+    const horizon = new Date(horizonMs).toISOString().slice(0, 10);
+
+    let allAgenda: ReminderAgendaItem[] = [];
+    if (upcomingDays > 0) {
+      allAgenda = await this.remindersService.getAgenda(today, horizon);
+    } else {
+      // upcomingDays = 0: only dueNow (prep window already started)
+      allAgenda = await this.remindersService.getAgenda(today, today);
+    }
+
+    const dueNow = allAgenda.filter(
+      (item) => item.isInPrepWindow && item.status === 'OPEN',
+    );
+    const upcoming = allAgenda.filter(
+      (item) =>
+        !item.isInPrepWindow &&
+        item.status === 'OPEN' &&
+        item.occurrenceDate <= horizon,
+    );
+
+    return { runs, todos, reminders: { dueNow, upcoming } };
   }
 }
+

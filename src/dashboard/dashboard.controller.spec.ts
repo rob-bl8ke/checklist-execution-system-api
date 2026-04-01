@@ -8,11 +8,14 @@ import { TemplateStep } from '../template-step/template-step.entity';
 import { Instance } from '../instance/instance.entity';
 import { InstanceStep } from '../instance/instance-step.entity';
 import { Todo } from '../todo/todo.entity';
+import { ReminderDefinition } from '../reminder/reminder-definition.entity';
+import { ReminderOccurrenceState } from '../reminder/reminder-occurrence-state.entity';
 import { TemplatesModule } from '../template/template.module';
 import { TemplateStepModule } from '../template-step/template-step.module';
 import { InstanceModule } from '../instance/instance.module';
 import { TodoModule } from '../todo/todo.module';
 import { DashboardModule } from './dashboard.module';
+import { ReminderModule } from '../reminder/reminder.module';
 
 describe('Dashboard API (integration)', () => {
   let app: INestApplication;
@@ -25,7 +28,7 @@ describe('Dashboard API (integration)', () => {
         TypeOrmModule.forRoot({
           type: 'better-sqlite3',
           database: ':memory:',
-          entities: [Template, TemplateStep, Instance, InstanceStep, Todo],
+          entities: [Template, TemplateStep, Instance, InstanceStep, Todo, ReminderDefinition, ReminderOccurrenceState],
           synchronize: true,
         }),
         TemplatesModule,
@@ -33,6 +36,7 @@ describe('Dashboard API (integration)', () => {
         InstanceModule,
         TodoModule,
         DashboardModule,
+        ReminderModule,
       ],
     }).compile();
 
@@ -48,6 +52,8 @@ describe('Dashboard API (integration)', () => {
   afterAll(() => app.close());
 
   beforeEach(async () => {
+    await dataSource.query('DELETE FROM reminder_occurrence_state');
+    await dataSource.query('DELETE FROM reminder_definition');
     await dataSource.query('DELETE FROM instance_step');
     await dataSource.query('DELETE FROM instance');
     await dataSource.query('DELETE FROM template_step');
@@ -100,7 +106,7 @@ describe('Dashboard API (integration)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/dashboard')
         .expect(200);
-      expect(res.body).toEqual({ runs: [], todos: [] });
+      expect(res.body).toEqual({ runs: [], todos: [], reminders: { dueNow: [], upcoming: [] } });
     });
 
     it('returns in-progress run with next step and progress', async () => {

@@ -5,6 +5,7 @@ import { Instance } from '../instance/instance.entity';
 import { InstanceStep } from '../instance/instance-step.entity';
 import { InstanceStatus } from '../instance/enums/instance-status.enum';
 import { Todo } from '../todo/todo.entity';
+import { RemindersService } from '../reminder/reminders.service';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -28,18 +29,26 @@ const mockTodoRepo = {
   find: jest.fn(),
 };
 
+const mockRemindersService = {
+  getAgenda: jest.fn(),
+};
+
 describe('DashboardService', () => {
   let service: DashboardService;
 
   beforeEach(async () => {
     jest.clearAllMocks();
     mockStepRepo.createQueryBuilder.mockReturnValue(mockQueryBuilder);
+    // Default: no reminders
+    mockRemindersService.getAgenda.mockResolvedValue([]);
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DashboardService,
         { provide: getRepositoryToken(Instance), useValue: mockInstanceRepo },
         { provide: getRepositoryToken(InstanceStep), useValue: mockStepRepo },
         { provide: getRepositoryToken(Todo), useValue: mockTodoRepo },
+        { provide: RemindersService, useValue: mockRemindersService },
       ],
     }).compile();
     service = module.get<DashboardService>(DashboardService);
@@ -50,12 +59,16 @@ describe('DashboardService', () => {
   // ---------------------------------------------------------------------------
 
   describe('getToday', () => {
-    it('returns empty runs and todos when nothing is active', async () => {
+    it('returns empty runs, todos, and reminders when nothing is active', async () => {
       mockInstanceRepo.find.mockResolvedValue([]);
       mockTodoRepo.find.mockResolvedValue([]);
 
       const result = await service.getToday();
-      expect(result).toEqual({ runs: [], todos: [] });
+      expect(result).toEqual({
+        runs: [],
+        todos: [],
+        reminders: { dueNow: [], upcoming: [] },
+      });
       // Should not query steps when no instances
       expect(mockStepRepo.createQueryBuilder).not.toHaveBeenCalled();
     });
@@ -146,6 +159,102 @@ describe('DashboardService', () => {
       const result = await service.getToday();
       expect(result.todos).toHaveLength(2);
       expect(result.todos[0].title).toBe('Todo A');
+    });
+
+    // -------------------------------------------------------------------------
+    // Reminders integration
+    // -------------------------------------------------------------------------
+
+    it('places occurrences in dueNow when isInPrepWindow and OPEN', async () => {
+      mockInstanceRepo.find.mockResolvedValue([]);
+      mockTodoRepo.find.mockResolvedValue([]);
+      const dueItem = {
+        reminderId: 1,
+        title: 'Daily Standup',
+        occurrenceDate: '2026-04-01',
+        status: 'OPEN',
+        isInPrepWindow: true,
+        isOverdue: false,
+        daysUntilOccurrence: 0,
+      };
+      mockRemindersService.getAgenda.mockResolvedValue([dueItem]);
+
+      const result = await service.getToday(7);
+      expect(result.reminders.dueNow).toHaveLength(1);
+      expect(result.reminders.dueNow[0].reminderId).toBe(1);
+      expect(result.reminders.upcoming).toHaveLength(0);
+    });
+
+    it('places occurrences in upcoming when not in prep window and OPEN', async () => {
+      mockInstanceRepo.find.mockResolvedValue([]);
+      mockTodoRepo.find.mockResolvedValue([]);
+      const upcomingItem = {
+        reminderId: 2,
+        title: 'Sprint Retro',
+        occurrenceDate: '2026-04-05',
+        status: 'OPEN',
+        isInPrepWindow: false,
+        isOverdue: false,
+        daysUntilOccurrence: 4,
+      };
+      mockRemindersService.getAgenda.mockResolvedValue([upcomingItem]);
+
+      const result = await service.getToday(7);
+      expect(result.reminders.upcoming).toHaveLength(1);
+      expect(result.reminders.dueNow).toHaveLength(0);
+    });
+
+    it('excludes completed/dismissed occurrences from both dueNow and upcoming', async () => {
+      mockInstanceRepo.find.mockResolvedValue([]);
+      mockTodoRepo.find.mockResolvedValue([]);
+      const completedItem = {
+        reminderId: 3,
+        title: 'Done Reminder',
+        occurrenceDate: '2026-04-01',
+        status: 'COMPLETED',
+        isInPrepWindow: true,
+        isOverdue: false,
+        daysUntilOccurrence: 0,
+      };
+      const dismissedItem = {
+        reminderId: 4,
+        title: 'Dismissed Reminder',
+        occurrenceDate: '2026-04-03',
+        status: 'DISMISSED',
+        isInPrepWindow: false,
+        isOverdue: false,
+        daysUntilOccurrence: 2,
+      };
+      mockRemindersService.getAgenda.mockResolvedValue([
+        completedItem,
+        dismissedItem,
+      ]);
+
+      const result = await service.getToday(7);
+      expect(result.reminders.dueNow).toHaveLength(0);
+      expect(result.reminders.upcoming).toHaveLength(0);
+    });
+
+    it('runs and todos remain unaffected by reminder state', async () => {
+      const todos = [{ id: 1, title: 'A Todo', completed: false }];
+      mockInstanceRepo.find.mockResolvedValue([]);
+      mockTodoRepo.find.mockResolvedValue(todos);
+      mockRemindersService.getAgenda.mockResolvedValue([
+        {
+          reminderId: 1,
+          title: 'A Reminder',
+          occurrenceDate: '2026-04-01',
+          status: 'OPEN',
+          isInPrepWindow: true,
+          isOverdue: false,
+          daysUntilOccurrence: 0,
+        },
+      ]);
+
+      const result = await service.getToday(7);
+      expect(result.todos).toHaveLength(1);
+      expect(result.todos[0].title).toBe('A Todo');
+      expect(result.runs).toHaveLength(0);
     });
   });
 });

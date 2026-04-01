@@ -12,13 +12,24 @@ import { InstanceModule } from './instance/instance.module';
 import { Todo } from './todo/todo.entity';
 import { TodoModule } from './todo/todo.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { ReminderDefinition } from './reminder/reminder-definition.entity';
+import { ReminderOccurrenceState } from './reminder/reminder-occurrence-state.entity';
+import { ReminderModule } from './reminder/reminder.module';
 
 @Module({
   imports: [
     TypeOrmModule.forRoot({
       type: 'better-sqlite3',
       database: process.env.DB_PATH ?? 'checklist.db',
-      entities: [Template, TemplateStep, Instance, InstanceStep, Todo],
+      entities: [
+        Template,
+        TemplateStep,
+        Instance,
+        InstanceStep,
+        Todo,
+        ReminderDefinition,
+        ReminderOccurrenceState,
+      ],
       synchronize: false,
       migrations: ['dist/database/migrations/*.js'],
       migrationsRun: false,
@@ -28,6 +39,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     InstanceModule,
     TodoModule,
     DashboardModule,
+    ReminderModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,8 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { TemplatesService } from './templates.service';
 import { Template } from './template.entity';
+import { ReminderDefinition } from '../reminder/reminder-definition.entity';
 
 const mockQb = {
   leftJoin: jest.fn().mockReturnThis(),
@@ -20,6 +21,10 @@ const mockRepo = {
   remove: jest.fn(),
 };
 
+const mockReminderRepo = {
+  existsBy: jest.fn(),
+};
+
 describe('TemplatesService', () => {
   let service: TemplatesService;
 
@@ -29,6 +34,7 @@ describe('TemplatesService', () => {
       providers: [
         TemplatesService,
         { provide: getRepositoryToken(Template), useValue: mockRepo },
+        { provide: getRepositoryToken(ReminderDefinition), useValue: mockReminderRepo },
       ],
     }).compile();
     service = module.get<TemplatesService>(TemplatesService);
@@ -101,6 +107,7 @@ describe('TemplatesService', () => {
     it('removes the template via ORM cascade', async () => {
       const template = { id: 1, name: 'T', steps: [], description: null, variablePrefix: null, variableSuffix: null } as unknown as Template;
       mockRepo.findOne.mockResolvedValue(template);
+      mockReminderRepo.existsBy.mockResolvedValue(false);
       mockRepo.remove.mockResolvedValue(template);
       await expect(service.remove(1)).resolves.toBeUndefined();
       expect(mockRepo.remove).toHaveBeenCalledWith(template);
@@ -109,6 +116,14 @@ describe('TemplatesService', () => {
     it('throws NotFoundException when template does not exist', async () => {
       mockRepo.findOne.mockResolvedValue(null);
       await expect(service.remove(999)).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws ConflictException when a reminder definition references the template', async () => {
+      const template = { id: 1, name: 'T', steps: [], description: null, variablePrefix: null, variableSuffix: null } as unknown as Template;
+      mockRepo.findOne.mockResolvedValue(template);
+      mockReminderRepo.existsBy.mockResolvedValue(true);
+      await expect(service.remove(1)).rejects.toThrow(ConflictException);
+      expect(mockRepo.remove).not.toHaveBeenCalled();
     });
   });
 });

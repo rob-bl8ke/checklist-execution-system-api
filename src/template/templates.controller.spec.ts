@@ -7,6 +7,8 @@ import { TemplatesModule } from './template.module';
 import { TemplateStepModule } from '../template-step/template-step.module';
 import { Template } from './template.entity';
 import { TemplateStep } from '../template-step/template-step.entity';
+import { ReminderDefinition } from '../reminder/reminder-definition.entity';
+import { ReminderOccurrenceState } from '../reminder/reminder-occurrence-state.entity';
 
 describe('Templates API (integration)', () => {
   let app: INestApplication;
@@ -19,7 +21,7 @@ describe('Templates API (integration)', () => {
         TypeOrmModule.forRoot({
           type: 'better-sqlite3',
           database: ':memory:',
-          entities: [Template, TemplateStep],
+          entities: [Template, TemplateStep, ReminderDefinition, ReminderOccurrenceState],
           synchronize: true,
         }),
         TemplatesModule,
@@ -39,6 +41,8 @@ describe('Templates API (integration)', () => {
   afterAll(() => app.close());
 
   beforeEach(async () => {
+    await dataSource.query('DELETE FROM reminder_occurrence_state');
+    await dataSource.query('DELETE FROM reminder_definition');
     await dataSource.query('DELETE FROM template_step');
     await dataSource.query('DELETE FROM template');
   });
@@ -245,4 +249,31 @@ describe('Templates API (integration)', () => {
       .post('/api/templates')
       .send({ name: 'Too Long', variablePrefix: '{{{{{{{{{{{{', variableSuffix: '}}' })
       .expect(400));
+
+  it('DELETE /api/templates/:id returns 409 when a reminder definition references the template', async () => {
+    const templateRes = await request(app.getHttpServer())
+      .post('/api/templates')
+      .send({ name: 'Linked Template' })
+      .expect(201);
+
+    const templateId = templateRes.body.id as number;
+
+    // Create a reminder definition that links to this template
+    await dataSource.getRepository(ReminderDefinition).save(
+      dataSource.getRepository(ReminderDefinition).create({
+        title: 'Test Reminder',
+        cadence: 'DAILY' as never,
+        interval: 1,
+        anchorDate: '2026-04-01',
+        leadTimeDays: 0,
+        active: true,
+        linkedTemplateId: templateId,
+      }),
+    );
+
+    const res = await request(app.getHttpServer()).delete(
+      `/api/templates/${templateId}`,
+    );
+    expect(res.status).toBe(409);
+  });
 });

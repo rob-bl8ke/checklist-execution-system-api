@@ -1,9 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Template } from './template.entity';
 import { CreateTemplateDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
+import { ReminderDefinition } from '../reminder/reminder-definition.entity';
 
 export interface TemplateListItem {
   id: number;
@@ -16,6 +21,8 @@ export class TemplatesService {
   constructor(
     @InjectRepository(Template)
     private readonly repo: Repository<Template>,
+    @InjectRepository(ReminderDefinition)
+    private readonly reminderRepo: Repository<ReminderDefinition>,
   ) {}
 
   async findAll(): Promise<TemplateListItem[]> {
@@ -63,6 +70,16 @@ export class TemplatesService {
 
   async remove(id: number): Promise<void> {
     const template = await this.findOne(id);
+
+    const hasLinkedReminders = await this.reminderRepo.existsBy({
+      linkedTemplateId: id,
+    });
+    if (hasLinkedReminders) {
+      throw new ConflictException(
+        `Template ${id} cannot be deleted because one or more reminder definitions reference it. Remove or update those reminders first.`,
+      );
+    }
+
     await this.repo.remove(template);
   }
 }

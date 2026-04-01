@@ -1,242 +1,130 @@
 ---
 name: nestjs-best-practices
-description: >
-  Project-specific NestJS architecture and implementation policy for the
-  Checklist Execution System API. Use when creating modules, entities, DTOs,
-  services, controllers, migrations, and transactional workflows. This skill
-  supplements the installed external skills (`nestjs-best-practices` from
-  kadajett and `nestjs-expert` from sickn33) — those cover general NestJS
-  patterns and troubleshooting. This skill owns project-specific rules only.
+description: NestJS best practices and architecture patterns for building production-ready applications. This skill should be used when writing, reviewing, or refactoring NestJS code to ensure proper patterns for modules, dependency injection, security, and performance.
+license: MIT
+metadata:
+  author: Kadajett
+  version: "1.1.0"
 ---
 
-# NestJS Project Policy — Checklist Execution System API
+# NestJS Best Practices
 
-## When to Use This Skill
+Comprehensive best practices guide for NestJS applications. Contains 40 rules across 10 categories, prioritized by impact to guide automated refactoring and code generation.
 
-Use this skill when:
-- Creating or modifying any NestJS module, entity, DTO, service, or controller in this project
-- Implementing transactional workflows (instance creation, step completion)
-- Writing or running TypeORM migrations
-- Designing API endpoints or error responses
-- Writing backend tests
+## When to Apply
 
-For general NestJS patterns, DI, exception handling, and troubleshooting, defer to the
-installed `nestjs-best-practices` and `nestjs-expert` skills first.
+Reference these guidelines when:
 
----
+- Writing new NestJS modules, controllers, or services
+- Implementing authentication and authorization
+- Reviewing code for architecture and security issues
+- Refactoring existing NestJS codebases
+- Optimizing performance or database queries
+- Building microservices architectures
 
-## Module Map
+## Rule Categories by Priority
 
-This API has six feature modules. Keep responsibilities within module boundaries:
+| Priority | Category | Impact | Prefix |
+|----------|----------|--------|--------|
+| 1 | Architecture | CRITICAL | `arch-` |
+| 2 | Dependency Injection | CRITICAL | `di-` |
+| 3 | Error Handling | HIGH | `error-` |
+| 4 | Security | HIGH | `security-` |
+| 5 | Performance | HIGH | `perf-` |
+| 6 | Testing | MEDIUM-HIGH | `test-` |
+| 7 | Database & ORM | MEDIUM-HIGH | `db-` |
+| 8 | API Design | MEDIUM | `api-` |
+| 9 | Microservices | MEDIUM | `micro-` |
+| 10 | DevOps & Deployment | LOW-MEDIUM | `devops-` |
 
-| Module | Responsibility |
-|---|---|
-| `template` | Template CRUD |
-| `template-step` | Step CRUD + gap-based position ordering + rebalancing |
-| `instance` | Run creation, variable extraction/rendering, status lifecycle |
-| `instance-step` | Step completion toggling, `next_step_id` advancement |
-| `todo` | Standalone todo CRUD |
-| `dashboard` | Read-only aggregation of in-progress runs + incomplete todos |
+## Quick Reference
 
-Each module has: `entity`, `service`, `controller`, and `module` files.
-No business logic in controllers — all logic lives in services.
+### 1. Architecture (CRITICAL)
 
----
+- `arch-avoid-circular-deps` - Avoid circular module dependencies
+- `arch-feature-modules` - Organize by feature, not technical layer
+- `arch-module-sharing` - Proper module exports/imports, avoid duplicate providers
+- `arch-single-responsibility` - Focused services over "god services"
+- `arch-use-repository-pattern` - Abstract database logic for testability
+- `arch-use-events` - Event-driven architecture for decoupling
 
-## Data Model
+### 2. Dependency Injection (CRITICAL)
 
-### Entities
+- `di-avoid-service-locator` - Avoid service locator anti-pattern
+- `di-interface-segregation` - Interface Segregation Principle (ISP)
+- `di-liskov-substitution` - Liskov Substitution Principle (LSP)
+- `di-prefer-constructor-injection` - Constructor over property injection
+- `di-scope-awareness` - Understand singleton/request/transient scopes
+- `di-use-interfaces-tokens` - Use injection tokens for interfaces
 
-Use TypeORM decorators. Follow these conventions:
+### 3. Error Handling (HIGH)
 
-```typescript
-@Entity()
-export class Template {
-  @PrimaryGeneratedColumn()
-  id: number;
+- `error-use-exception-filters` - Centralized exception handling
+- `error-throw-http-exceptions` - Use NestJS HTTP exceptions
+- `error-handle-async-errors` - Handle async errors properly
 
-  @Column({ nullable: false })
-  name: string;
+### 4. Security (HIGH)
 
-  @Column({ nullable: true })
-  description: string;
+- `security-auth-jwt` - Secure JWT authentication
+- `security-validate-all-input` - Validate with class-validator
+- `security-use-guards` - Authentication and authorization guards
+- `security-sanitize-output` - Prevent XSS attacks
+- `security-rate-limiting` - Implement rate limiting
 
-  @CreateDateColumn()
-  createdAt: Date;
+### 5. Performance (HIGH)
 
-  @UpdateDateColumn()
-  updatedAt: Date;
-}
-```
+- `perf-async-hooks` - Proper async lifecycle hooks
+- `perf-use-caching` - Implement caching strategies
+- `perf-optimize-database` - Optimize database queries
+- `perf-lazy-loading` - Lazy load modules for faster startup
 
-- Use `@CreateDateColumn()` and `@UpdateDateColumn()` for timestamps
-- Use `nullable: false` explicitly on required columns
-- Enums are string-backed: `status: 'IN_PROGRESS' | 'COMPLETED' | 'ABANDONED'`
-- Store JSON (variables) as `@Column({ type: 'simple-json', nullable: true })`
+### 6. Testing (MEDIUM-HIGH)
 
-### Instance Status Lifecycle
+- `test-use-testing-module` - Use NestJS testing utilities
+- `test-e2e-supertest` - E2E testing with Supertest
+- `test-mock-external-services` - Mock external dependencies
 
-```
-IN_PROGRESS → COMPLETED (auto when all steps done)
-IN_PROGRESS → ABANDONED (manual)
-```
+### 7. Database & ORM (MEDIUM-HIGH)
 
-Never allow transitions from COMPLETED or ABANDONED back to IN_PROGRESS.
+- `db-use-transactions` - Transaction management
+- `db-avoid-n-plus-one` - Avoid N+1 query problems
+- `db-use-migrations` - Use migrations for schema changes
 
-### Delete Semantics
+### 8. API Design (MEDIUM)
 
-| Delete | Cascades to | Notes |
-|---|---|---|
-| Template | Template steps | Instances survive (they are self-contained snapshots) |
-| Instance | Instance steps | Full cascade |
-| Template step | Nothing | Instance steps are independent copies |
+- `api-use-dto-serialization` - DTO and response serialization
+- `api-use-interceptors` - Cross-cutting concerns
+- `api-versioning` - API versioning strategies
+- `api-use-pipes` - Input transformation with pipes
 
-Use `onDelete: 'CASCADE'` on `@ManyToOne` relations where required.
+### 9. Microservices (MEDIUM)
 
----
+- `micro-use-patterns` - Message and event patterns
+- `micro-use-health-checks` - Health checks for orchestration
+- `micro-use-queues` - Background job processing
 
-## DTO and Validation
+### 10. DevOps & Deployment (LOW-MEDIUM)
 
-- Separate DTOs for create, update, and move operations
-- All request DTOs use `class-validator` decorators
-- All request DTOs are decorated with `@ApiProperty()` for Swagger
-- Response shaping: return plain objects or response DTOs — do not leak ORM entities directly
+- `devops-use-config-module` - Environment configuration
+- `devops-use-logging` - Structured logging
+- `devops-graceful-shutdown` - Zero-downtime deployments
 
-```typescript
-export class CreateTemplateDto {
-  @ApiProperty({ example: 'Deployment Process' })
-  @IsString()
-  @IsNotEmpty()
-  name: string;
+## How to Use
 
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  description?: string;
-}
-```
-
-The global `ValidationPipe` is configured with `whitelist: true, forbidNonWhitelisted: true`.
-
----
-
-## Service Layer Rules
-
-- All multi-step mutations MUST use a TypeORM `QueryRunner` transaction
-- Repository injection via `@InjectRepository(Entity)`
-- Business rule logic (ordering, rendering, status transitions) lives in the service, not the controller
-- Services expose typed return values — not raw `any`
-
----
-
-## Project-Specific Workflow Rules
-
-### Template Step Gap Ordering
-
-Steps use integer gap positions (100, 200, 300, ...). When inserting between two steps:
+Read individual rule files for detailed explanations and code examples:
 
 ```
-newPosition = Math.floor((beforePosition + afterPosition) / 2)
+rules/arch-avoid-circular-deps.md
+rules/security-validate-all-input.md
+rules/_sections.md
 ```
 
-**Rebalancing trigger**: if `newPosition === beforePosition` (gap < 1), rebalance all steps in the template:
-- Query all steps ordered by position
-- Reassign positions: `(index + 1) * 100`
-- Wrap in a transaction
+Each rule file contains:
+- Brief explanation of why it matters
+- Incorrect code example with explanation
+- Correct code example with explanation
+- Additional context and references
 
-### Instance Creation (Transactional)
+## Full Compiled Document
 
-Order of operations within a single transaction:
-1. Create and save the `Instance` (sets `next_step_id = null` initially)
-2. Extract `{{variable}}` placeholders from all template steps (regex: `/\{\{(.*?)\}\}/g`)
-3. Deduplicate variable names
-4. Render each instruction by replacing placeholders with supplied values
-5. Create and save all `InstanceStep` records
-6. Set `instance.next_step_id` to the first step's ID
-7. Save the instance again
-
-Never set `next_step_id` before all steps exist — it would create a FK violation.
-
-### Step Completion / next_step_id
-
-When a step is toggled completed:
-1. Update `instanceStep.completed` and `instanceStep.completedAt`
-2. Find the first incomplete step ordered by `stepOrder`
-3. Set `instance.next_step_id` to that step's ID (or `null` if all complete)
-4. If all steps complete, set `instance.status = 'COMPLETED'`
-5. All of the above in a single transaction
-
-Step un-completion is supported — toggle back, recalculate next_step_id.
-
-### Variable Extraction
-
-```typescript
-extractVariables(instructions: string): string[] {
-  const matches = instructions.matchAll(/\{\{(.*?)\}\}/g);
-  return [...new Set([...matches].map(m => m[1].trim()))];
-}
-```
-
-### Today Dashboard Query
-
-Use a single JOIN query via QueryBuilder:
-
-```sql
-SELECT i.id, i.name, i.status, s.id as stepId, s.title, s.renderedInstructions
-FROM instance i
-LEFT JOIN instance_step s ON s.id = i.next_step_id
-WHERE i.status = 'IN_PROGRESS'
-```
-
----
-
-## API Conventions
-
-- Global prefix: `/api` (set in `main.ts`)
-- Base routes follow spec: `/api/templates`, `/api/instances`, `/api/todos`, `/api/dashboard`
-- All controllers tagged with `@ApiTags()`
-- Standard NestJS exception responses — use `NotFoundException`, `BadRequestException`, `ConflictException`
-- Error response shape (NestJS default): `{ statusCode, message, error }`
-
----
-
-## Migration Workflow
-
-- Generate: `npm run migration:generate -- src/database/migrations/<Name>`
-- Run: `npm run migration:run`
-- `synchronize: false` — never use `synchronize: true` in any environment
-- All schema changes go through migrations
-- DataSource config at `src/database/data-source.ts`
-
----
-
-## Testing Conventions
-
-- Unit tests for services using mocked repositories (`jest.fn()`)
-- Integration tests use a separate in-memory SQLite database
-- Supertest for controller/HTTP layer tests
-- Transaction-heavy workflows (instance creation, step completion) require integration tests
-- Test files colocated: `*.spec.ts` beside the source file
-- E2E tests in `test/` directory
-
----
-
-## Anti-Patterns
-
-- Do not return ORM entity objects directly from controllers without shaping
-- Do not put business logic in controllers (ordering, rendering, status transitions)
-- Do not use `synchronize: true`
-- Do not run multi-step mutations without a transaction
-- Do not push TypeORM query builder SQL into controllers
-
----
-
-## Definition of Done (per feature)
-
-- [ ] Request DTOs validated with `class-validator` + Swagger `@ApiProperty`
-- [ ] Service uses transactions for multi-step mutations
-- [ ] Delete cascades match the delete semantics table above
-- [ ] Migration generated and runs cleanly
-- [ ] Unit test for service logic
-- [ ] Integration/Supertest for controller layer
-- [ ] Swagger docs visible at `/api/docs`
+For the complete guide with all rules expanded: `AGENTS.md`

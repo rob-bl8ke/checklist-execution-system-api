@@ -90,12 +90,7 @@ describe('DashboardService', () => {
       mockTodoRepo.find.mockResolvedValue([]);
 
       await service.getToday();
-      expect(mockTodoRepo.find).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { completed: false },
-          order: { createdAt: 'DESC' },
-        }),
-      );
+      expect(mockTodoRepo.find).toHaveBeenCalledWith();
     });
 
     it('maps instance progress correctly', async () => {
@@ -151,14 +146,39 @@ describe('DashboardService', () => {
     it('returns incomplete todos populated in response', async () => {
       mockInstanceRepo.find.mockResolvedValue([]);
       const todos = [
-        { id: 1, title: 'Todo A', completed: false },
-        { id: 2, title: 'Todo B', completed: false },
+        { id: 1, title: 'Todo A', completed: false, dueDate: null, priority: 'NORMAL', createdAt: new Date('2026-01-01'), completedAt: null },
+        { id: 2, title: 'Todo B', completed: false, dueDate: null, priority: 'NORMAL', createdAt: new Date('2026-01-02'), completedAt: null },
       ];
       mockTodoRepo.find.mockResolvedValue(todos);
 
       const result = await service.getToday();
       expect(result.todos).toHaveLength(2);
-      expect(result.todos[0].title).toBe('Todo A');
+    });
+
+    it('excludes completed todos from the dashboard', async () => {
+      mockInstanceRepo.find.mockResolvedValue([]);
+      const todos = [
+        { id: 1, title: 'Incomplete', completed: false, dueDate: null, priority: 'NORMAL', createdAt: new Date('2026-01-01'), completedAt: null },
+        { id: 2, title: 'Completed', completed: true, dueDate: null, priority: 'NORMAL', createdAt: new Date('2026-01-01'), completedAt: new Date() },
+      ];
+      mockTodoRepo.find.mockResolvedValue(todos);
+
+      const result = await service.getToday();
+      expect(result.todos).toHaveLength(1);
+      expect(result.todos[0].title).toBe('Incomplete');
+    });
+
+    it('preserves execution ordering for incomplete todos in dashboard', async () => {
+      mockInstanceRepo.find.mockResolvedValue([]);
+      const todos = [
+        { id: 1, title: 'Undated Normal', completed: false, dueDate: null, priority: 'NORMAL', createdAt: new Date('2026-01-01'), completedAt: null },
+        { id: 2, title: 'Dated', completed: false, dueDate: '2026-04-10', priority: 'NORMAL', createdAt: new Date('2026-01-01'), completedAt: null },
+      ];
+      mockTodoRepo.find.mockResolvedValue(todos);
+
+      const result = await service.getToday();
+      expect(result.todos[0].title).toBe('Dated');
+      expect(result.todos[1].title).toBe('Undated Normal');
     });
 
     // -------------------------------------------------------------------------

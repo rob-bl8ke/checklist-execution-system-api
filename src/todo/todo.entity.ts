@@ -4,6 +4,7 @@ import {
   Entity,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+import { TodoPriority } from './enums/todo-priority.enum';
 
 @Entity('todo')
 export class Todo {
@@ -15,6 +16,12 @@ export class Todo {
 
   @Column({ type: 'text', nullable: true })
   description: string | null;
+
+  @Column({ name: 'due_date', type: 'text', nullable: true })
+  dueDate: string | null;
+
+  @Column({ type: 'text', default: TodoPriority.NORMAL })
+  priority: TodoPriority;
 
   @Column({ type: 'boolean', default: false })
   completed: boolean;

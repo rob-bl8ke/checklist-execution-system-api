@@ -5,6 +5,7 @@ import { Instance } from '../instance/instance.entity';
 import { InstanceStep } from '../instance/instance-step.entity';
 import { InstanceStatus } from '../instance/enums/instance-status.enum';
 import { Todo } from '../todo/todo.entity';
+import { sortTodos } from '../todo/todos.service';
 import { RemindersService, ReminderAgendaItem } from '../reminder/reminders.service';
 
 export interface DashboardNextStep {
@@ -112,10 +113,8 @@ export class DashboardService {
       };
     });
 
-    const todos = await this.todoRepo.find({
-      where: { completed: false },
-      order: { createdAt: 'DESC' },
-    });
+    const allTodos = await this.todoRepo.find();
+    const todos = sortTodos(allTodos).filter((t) => !t.completed);
 
     // Reminder occurrences
     const today = new Date().toISOString().slice(0, 10);

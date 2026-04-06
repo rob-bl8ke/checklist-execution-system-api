@@ -18,6 +18,7 @@ import { ReminderModule } from './reminder/reminder.module';
 import { Note } from './note/note.entity';
 import { NoteVersion } from './note/note-version.entity';
 import { NoteTag } from './note/note-tag.entity';
+import { NoteModule } from './note/note.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { NoteTag } from './note/note-tag.entity';
     TodoModule,
     DashboardModule,
     ReminderModule,
+    NoteModule,
   ],
   controllers: [AppController],
   providers: [AppService],

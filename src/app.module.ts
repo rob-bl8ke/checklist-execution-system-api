@@ -15,6 +15,9 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { ReminderDefinition } from './reminder/reminder-definition.entity';
 import { ReminderOccurrenceState } from './reminder/reminder-occurrence-state.entity';
 import { ReminderModule } from './reminder/reminder.module';
+import { Note } from './note/note.entity';
+import { NoteVersion } from './note/note-version.entity';
+import { NoteTag } from './note/note-tag.entity';
 
 @Module({
   imports: [
@@ -29,6 +32,9 @@ import { ReminderModule } from './reminder/reminder.module';
         Todo,
         ReminderDefinition,
         ReminderOccurrenceState,
+        Note,
+        NoteVersion,
+        NoteTag,
       ],
       synchronize: false,
       migrations: ['dist/database/migrations/*.js'],

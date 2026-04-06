@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Note } from './note.entity';
 import { NoteTag } from './note-tag.entity';
+import { NoteVersion } from './note-version.entity';
 import { CreateNoteDto } from './dto/create-note.dto';
 import { UpdateNoteDto } from './dto/update-note.dto';
+import { CreateNoteVersionDto } from './dto/create-note-version.dto';
+import { evaluate } from '../instance/transform-pipeline';
+import { escapeRegex } from '../common/escape-regex';
 
 export type TagMode = 'any' | 'all';
 
@@ -19,6 +23,9 @@ export class NotesService {
     private readonly noteRepo: Repository<Note>,
     @InjectRepository(NoteTag)
     private readonly noteTagRepo: Repository<NoteTag>,
+    @InjectRepository(NoteVersion)
+    private readonly noteVersionRepo: Repository<NoteVersion>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async findAll(
@@ -145,5 +152,124 @@ export class NotesService {
       .orderBy('nt.tag', 'ASC')
       .getRawMany<{ tag: string }>();
     return rows.map((r) => r.tag);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Versioning
+  // ---------------------------------------------------------------------------
+
+  async listVersions(noteId: number): Promise<NoteVersion[]> {
+    const note = await this.noteRepo.findOne({ where: { id: noteId } });
+    if (!note) {
+      throw new NotFoundException(`Note with id ${noteId} not found`);
+    }
+    return this.noteVersionRepo.find({
+      where: { noteId },
+      order: { versionNumber: 'DESC' },
+    });
+  }
+
+  async createVersion(
+    noteId: number,
+    dto?: CreateNoteVersionDto,
+  ): Promise<NoteVersion> {
+    const note = await this.noteRepo.findOne({ where: { id: noteId } });
+    if (!note) {
+      throw new NotFoundException(`Note with id ${noteId} not found`);
+    }
+
+    const maxResult = await this.noteVersionRepo
+      .createQueryBuilder('nv')
+      .select('MAX(nv.version_number)', 'max')
+      .where('nv.note_id = :noteId', { noteId })
+      .getRawOne<{ max: number | null }>();
+
+    const nextNumber = (maxResult?.max ?? 0) + 1;
+
+    const version = this.noteVersionRepo.create({
+      noteId,
+      title: note.title,
+      body: note.body,
+      versionNumber: nextNumber,
+    });
+
+    void dto; // label captured for future use; not stored in current schema
+    return this.noteVersionRepo.save(version);
+  }
+
+  async restoreVersion(noteId: number, versionId: number): Promise<Note> {
+    return this.dataSource.transaction(async (manager) => {
+      const noteRepo = manager.getRepository(Note);
+      const versionRepo = manager.getRepository(NoteVersion);
+
+      const note = await noteRepo.findOne({ where: { id: noteId } });
+      if (!note) {
+        throw new NotFoundException(`Note with id ${noteId} not found`);
+      }
+
+      const target = await versionRepo.findOne({
+        where: { id: versionId, noteId },
+      });
+      if (!target) {
+        throw new NotFoundException(
+          `Version with id ${versionId} not found for note ${noteId}`,
+        );
+      }
+
+      // Auto-snapshot current state before overwriting
+      const maxResult = await versionRepo
+        .createQueryBuilder('nv')
+        .select('MAX(nv.version_number)', 'max')
+        .where('nv.note_id = :noteId', { noteId })
+        .getRawOne<{ max: number | null }>();
+      const nextNumber = (maxResult?.max ?? 0) + 1;
+      const snapshot = versionRepo.create({
+        noteId,
+        title: note.title,
+        body: note.body,
+        versionNumber: nextNumber,
+      });
+      await versionRepo.save(snapshot);
+
+      // Copy target version's title + body to note
+      note.title = target.title;
+      note.body = target.body;
+      note.updatedAt = new Date();
+      await noteRepo.save(note);
+
+      return noteRepo.findOne({
+        where: { id: noteId },
+        relations: ['tags'],
+      }) as Promise<Note>;
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Variable generation (ephemeral)
+  // ---------------------------------------------------------------------------
+
+  async generate(
+    noteId: number,
+    variables: Record<string, string>,
+  ): Promise<string> {
+    const note = await this.noteRepo.findOne({ where: { id: noteId } });
+    if (!note) {
+      throw new NotFoundException(`Note with id ${noteId} not found`);
+    }
+
+    const body = note.body ?? '';
+    const prefix = note.variablePrefix ?? '{{';
+    const suffix = note.variableSuffix ?? '}}';
+
+    const regex = new RegExp(
+      escapeRegex(prefix) + '(.*?)' + escapeRegex(suffix),
+      'g',
+    );
+
+    return body.replace(
+      regex,
+      (original, capturedContent: string) =>
+        evaluate(capturedContent, variables) ?? original,
+    );
   }
 }

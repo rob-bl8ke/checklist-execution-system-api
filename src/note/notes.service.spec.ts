@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException } from '@nestjs/common';
+import { DataSource } from 'typeorm';
 import { NotesService } from './notes.service';
 import { Note } from './note.entity';
 import { NoteTag } from './note-tag.entity';
+import { NoteVersion } from './note-version.entity';
 
 // ---------------------------------------------------------------------------
 // Mock query builder for Note repository
@@ -23,6 +25,41 @@ const mockNoteRepo = {
   create: jest.fn(),
   save: jest.fn(),
   remove: jest.fn(),
+};
+
+// ---------------------------------------------------------------------------
+// Mock query builder for NoteVersion repository
+// ---------------------------------------------------------------------------
+const mockNoteVersionQb = {
+  select: jest.fn().mockReturnThis(),
+  where: jest.fn().mockReturnThis(),
+  getRawOne: jest.fn(),
+};
+
+const mockNoteVersionRepo = {
+  createQueryBuilder: jest.fn().mockReturnValue(mockNoteVersionQb),
+  find: jest.fn(),
+  findOne: jest.fn(),
+  create: jest.fn(),
+  save: jest.fn(),
+};
+
+// ---------------------------------------------------------------------------
+// Mock DataSource (for transaction)
+// ---------------------------------------------------------------------------
+const mockTransactionNoteRepo = {
+  findOne: jest.fn(),
+  create: jest.fn(),
+  save: jest.fn(),
+};
+const mockTransactionVersionRepo = {
+  createQueryBuilder: jest.fn(),
+  findOne: jest.fn(),
+  create: jest.fn(),
+  save: jest.fn(),
+};
+const mockDataSource = {
+  transaction: jest.fn(),
 };
 
 // ---------------------------------------------------------------------------
@@ -83,12 +120,15 @@ describe('NotesService', () => {
     jest.clearAllMocks();
     mockNoteRepo.createQueryBuilder.mockReturnValue(mockNoteQb);
     mockNoteTagRepo.createQueryBuilder.mockReturnValue(mockNoteTagQb);
+    mockNoteVersionRepo.createQueryBuilder.mockReturnValue(mockNoteVersionQb);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         NotesService,
         { provide: getRepositoryToken(Note), useValue: mockNoteRepo },
         { provide: getRepositoryToken(NoteTag), useValue: mockNoteTagRepo },
+        { provide: getRepositoryToken(NoteVersion), useValue: mockNoteVersionRepo },
+        { provide: DataSource, useValue: mockDataSource },
       ],
     }).compile();
 
@@ -331,6 +371,187 @@ describe('NotesService', () => {
       mockNoteTagQb.getRawMany.mockResolvedValue([]);
       const result = await service.findAllTags();
       expect(result).toEqual([]);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // listVersions
+  // -------------------------------------------------------------------------
+  describe('listVersions', () => {
+    it('throws NotFoundException when note not found', async () => {
+      mockNoteRepo.findOne.mockResolvedValue(null);
+      await expect(service.listVersions(99)).rejects.toThrow(NotFoundException);
+    });
+
+    it('returns versions ordered DESC by version_number', async () => {
+      mockNoteRepo.findOne.mockResolvedValue(makeNote({ id: 1 }));
+      const versions = [
+        { id: 2, versionNumber: 2 } as NoteVersion,
+        { id: 1, versionNumber: 1 } as NoteVersion,
+      ];
+      mockNoteVersionRepo.find.mockResolvedValue(versions);
+      const result = await service.listVersions(1);
+      expect(result).toEqual(versions);
+      expect(mockNoteVersionRepo.find).toHaveBeenCalledWith({
+        where: { noteId: 1 },
+        order: { versionNumber: 'DESC' },
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // createVersion
+  // -------------------------------------------------------------------------
+  describe('createVersion', () => {
+    it('throws NotFoundException when note not found', async () => {
+      mockNoteRepo.findOne.mockResolvedValue(null);
+      await expect(service.createVersion(99)).rejects.toThrow(NotFoundException);
+    });
+
+    it('creates a version with version_number = max + 1', async () => {
+      const note = makeNote({ id: 1, title: 'My Note', body: 'Content' });
+      mockNoteRepo.findOne.mockResolvedValue(note);
+      mockNoteVersionQb.getRawOne.mockResolvedValue({ max: 2 });
+      const newVersion = { id: 3, noteId: 1, title: 'My Note', body: 'Content', versionNumber: 3 } as NoteVersion;
+      mockNoteVersionRepo.create.mockReturnValue(newVersion);
+      mockNoteVersionRepo.save.mockResolvedValue(newVersion);
+
+      const result = await service.createVersion(1);
+      expect(mockNoteVersionRepo.create).toHaveBeenCalledWith({
+        noteId: 1,
+        title: 'My Note',
+        body: 'Content',
+        versionNumber: 3,
+      });
+      expect(result.versionNumber).toBe(3);
+    });
+
+    it('uses version_number = 1 when no prior versions exist', async () => {
+      const note = makeNote({ id: 1 });
+      mockNoteRepo.findOne.mockResolvedValue(note);
+      mockNoteVersionQb.getRawOne.mockResolvedValue({ max: null });
+      const newVersion = { id: 1, noteId: 1, versionNumber: 1 } as NoteVersion;
+      mockNoteVersionRepo.create.mockReturnValue(newVersion);
+      mockNoteVersionRepo.save.mockResolvedValue(newVersion);
+
+      const result = await service.createVersion(1);
+      expect(result.versionNumber).toBe(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // restoreVersion
+  // -------------------------------------------------------------------------
+  describe('restoreVersion', () => {
+    it('throws NotFoundException for unknown note', async () => {
+      mockDataSource.transaction.mockImplementation(async (cb: (manager: unknown) => Promise<unknown>) => {
+        const manager = {
+          getRepository: (entity: unknown) => {
+            if (entity === Note) return { ...mockTransactionNoteRepo, findOne: jest.fn().mockResolvedValue(null) };
+            return mockTransactionVersionRepo;
+          },
+        };
+        return cb(manager);
+      });
+      await expect(service.restoreVersion(99, 1)).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws NotFoundException for unknown version', async () => {
+      const note = makeNote({ id: 1 });
+      mockDataSource.transaction.mockImplementation(async (cb: (manager: unknown) => Promise<unknown>) => {
+        const manager = {
+          getRepository: (entity: unknown) => {
+            if (entity === Note) return { ...mockTransactionNoteRepo, findOne: jest.fn().mockResolvedValue(note) };
+            return { ...mockTransactionVersionRepo, findOne: jest.fn().mockResolvedValue(null), createQueryBuilder: jest.fn().mockReturnValue({ select: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), getRawOne: jest.fn().mockResolvedValue({ max: 0 }) }) };
+          },
+        };
+        return cb(manager);
+      });
+      await expect(service.restoreVersion(1, 99)).rejects.toThrow(NotFoundException);
+    });
+
+    it('auto-snapshots current state before restoring and returns updated note', async () => {
+      const note = makeNote({ id: 1, title: 'Current', body: 'Old body' });
+      const targetVersion = { id: 2, noteId: 1, title: 'Past', body: 'Past body', versionNumber: 1 } as NoteVersion;
+      const restoredNote = makeNote({ id: 1, title: 'Past', body: 'Past body', tags: [] });
+
+      const mockTxNoteRepo = {
+        findOne: jest.fn()
+          .mockResolvedValueOnce(note)
+          .mockResolvedValueOnce(restoredNote),
+        save: jest.fn().mockImplementation(async (n: Note) => n),
+      };
+      const mockTxVersionQb = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ max: 1 }),
+      };
+      const mockTxVersionRepo = {
+        findOne: jest.fn().mockResolvedValue(targetVersion),
+        createQueryBuilder: jest.fn().mockReturnValue(mockTxVersionQb),
+        create: jest.fn().mockImplementation((v) => v),
+        save: jest.fn().mockResolvedValue({}),
+      };
+
+      mockDataSource.transaction.mockImplementation(async (cb: (manager: unknown) => Promise<unknown>) => {
+        const manager = {
+          getRepository: (entity: unknown) => {
+            if (entity === Note) return mockTxNoteRepo;
+            return mockTxVersionRepo;
+          },
+        };
+        return cb(manager);
+      });
+
+      const result = await service.restoreVersion(1, 2);
+
+      // Auto-snapshot should have been created
+      expect(mockTxVersionRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ noteId: 1, versionNumber: 2 }),
+      );
+      // Note body should have been updated to target version
+      expect(mockTxNoteRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Past', body: 'Past body' }),
+      );
+      expect(result.title).toBe('Past');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // generate
+  // -------------------------------------------------------------------------
+  describe('generate', () => {
+    it('throws NotFoundException when note not found', async () => {
+      mockNoteRepo.findOne.mockResolvedValue(null);
+      await expect(service.generate(99, {})).rejects.toThrow(NotFoundException);
+    });
+
+    it('renders placeholders using default delimiters', async () => {
+      const note = makeNote({ id: 1, body: 'Hello {{name}}!', variablePrefix: null, variableSuffix: null });
+      mockNoteRepo.findOne.mockResolvedValue(note);
+      const result = await service.generate(1, { name: 'World' });
+      expect(result).toBe('Hello World!');
+    });
+
+    it('renders placeholders using custom delimiters', async () => {
+      const note = makeNote({ id: 1, body: 'Hi [[greeting]]', variablePrefix: '[[', variableSuffix: ']]' });
+      mockNoteRepo.findOne.mockResolvedValue(note);
+      const result = await service.generate(1, { greeting: 'there' });
+      expect(result).toBe('Hi there');
+    });
+
+    it('leaves unknown placeholders intact', async () => {
+      const note = makeNote({ id: 1, body: 'Hello {{unknown}}!', variablePrefix: null, variableSuffix: null });
+      mockNoteRepo.findOne.mockResolvedValue(note);
+      const result = await service.generate(1, {});
+      expect(result).toBe('Hello {{unknown}}!');
+    });
+
+    it('returns empty string when body is null', async () => {
+      const note = makeNote({ id: 1, body: null, variablePrefix: null, variableSuffix: null });
+      mockNoteRepo.findOne.mockResolvedValue(note);
+      const result = await service.generate(1, {});
+      expect(result).toBe('');
     });
   });
 });

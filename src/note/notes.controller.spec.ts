@@ -284,4 +284,171 @@ describe('Notes API (integration)', () => {
         .expect(404);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Version endpoints
+  // ---------------------------------------------------------------------------
+
+  describe('GET /api/notes/:id/versions', () => {
+    it('returns empty array when no versions exist', async () => {
+      const note = await createNote({ title: 'Versioned' });
+      const res = await request(app.getHttpServer())
+        .get(`/api/notes/${note.id}/versions`)
+        .expect(200);
+      expect(res.body).toEqual([]);
+    });
+
+    it('returns versions in descending order', async () => {
+      const note = await createNote({ title: 'V note' });
+      await request(app.getHttpServer())
+        .post(`/api/notes/${note.id}/versions`)
+        .send({})
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/api/notes/${note.id}/versions`)
+        .send({})
+        .expect(201);
+      const res = await request(app.getHttpServer())
+        .get(`/api/notes/${note.id}/versions`)
+        .expect(200);
+      expect(res.body).toHaveLength(2);
+      expect(res.body[0].versionNumber).toBeGreaterThan(res.body[1].versionNumber);
+    });
+
+    it('returns 404 for unknown note', async () => {
+      await request(app.getHttpServer())
+        .get('/api/notes/9999/versions')
+        .expect(404);
+    });
+  });
+
+  describe('POST /api/notes/:id/versions', () => {
+    it('creates a snapshot and returns 201', async () => {
+      const note = await createNote({ title: 'Snap', body: 'Content' });
+      const res = await request(app.getHttpServer())
+        .post(`/api/notes/${note.id}/versions`)
+        .send({})
+        .expect(201);
+      expect(res.body.versionNumber).toBe(1);
+      expect(res.body.title).toBe('Snap');
+      expect(res.body.body).toBe('Content');
+    });
+
+    it('increments version_number on each call', async () => {
+      const note = await createNote({ title: 'Inc' });
+      await request(app.getHttpServer())
+        .post(`/api/notes/${note.id}/versions`)
+        .send({})
+        .expect(201);
+      const res = await request(app.getHttpServer())
+        .post(`/api/notes/${note.id}/versions`)
+        .send({})
+        .expect(201);
+      expect(res.body.versionNumber).toBe(2);
+    });
+
+    it('returns 404 for unknown note', async () => {
+      await request(app.getHttpServer())
+        .post('/api/notes/9999/versions')
+        .send({})
+        .expect(404);
+    });
+  });
+
+  describe('POST /api/notes/:id/versions/:versionId/restore', () => {
+    it('restores a version and auto-snapshots the current state', async () => {
+      const note = await createNote({ title: 'Original', body: 'Original body' });
+      // Create version 1 (snapshot of original)
+      const v1Res = await request(app.getHttpServer())
+        .post(`/api/notes/${note.id}/versions`)
+        .send({})
+        .expect(201);
+      const v1Id: number = v1Res.body.id;
+
+      // Update the note
+      await request(app.getHttpServer())
+        .put(`/api/notes/${note.id}`)
+        .send({ title: 'Updated', body: 'Updated body' })
+        .expect(200);
+
+      // Restore to version 1
+      const res = await request(app.getHttpServer())
+        .post(`/api/notes/${note.id}/versions/${v1Id}/restore`)
+        .expect(200);
+
+      expect(res.body.title).toBe('Original');
+      expect(res.body.body).toBe('Original body');
+
+      // Should now have 3 versions: v1, + auto-snapshot of "Updated", which was created before restore
+      const versionsRes = await request(app.getHttpServer())
+        .get(`/api/notes/${note.id}/versions`)
+        .expect(200);
+      expect(versionsRes.body).toHaveLength(2);
+    });
+
+    it('returns 404 for unknown note', async () => {
+      await request(app.getHttpServer())
+        .post('/api/notes/9999/versions/1/restore')
+        .expect(404);
+    });
+
+    it('returns 404 for unknown version', async () => {
+      const note = await createNote({ title: 'N' });
+      await request(app.getHttpServer())
+        .post(`/api/notes/${note.id}/versions/9999/restore`)
+        .expect(404);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Generate endpoint
+  // ---------------------------------------------------------------------------
+
+  describe('POST /api/notes/:id/generate', () => {
+    it('returns rendered body with placeholders replaced', async () => {
+      const note = await createNote({ title: 'T', body: 'Hello {{name}}!' });
+      const res = await request(app.getHttpServer())
+        .post(`/api/notes/${note.id}/generate`)
+        .send({ variables: { name: 'World' } })
+        .expect(200);
+      expect(res.body).toEqual({ rendered: 'Hello World!' });
+    });
+
+    it('leaves unknown placeholders intact', async () => {
+      const note = await createNote({ title: 'T', body: 'Hello {{unknown}}!' });
+      const res = await request(app.getHttpServer())
+        .post(`/api/notes/${note.id}/generate`)
+        .send({ variables: {} })
+        .expect(200);
+      expect(res.body.rendered).toBe('Hello {{unknown}}!');
+    });
+
+    it('returns { rendered: "" } when note body is null', async () => {
+      const note = await createNote({ title: 'Empty' });
+      const res = await request(app.getHttpServer())
+        .post(`/api/notes/${note.id}/generate`)
+        .send({})
+        .expect(200);
+      expect(res.body.rendered).toBe('');
+    });
+
+    it('returns 404 for unknown note', async () => {
+      await request(app.getHttpServer())
+        .post('/api/notes/9999/generate')
+        .send({ variables: {} })
+        .expect(404);
+    });
+
+    it('does not persist anything to the database', async () => {
+      const note = await createNote({ title: 'T', body: '{{x}}' });
+      await request(app.getHttpServer())
+        .post(`/api/notes/${note.id}/generate`)
+        .send({ variables: { x: 'val' } })
+        .expect(200);
+      const fetched = await request(app.getHttpServer())
+        .get(`/api/notes/${note.id}`)
+        .expect(200);
+      expect(fetched.body.body).toBe('{{x}}');
+    });
+  });
 });

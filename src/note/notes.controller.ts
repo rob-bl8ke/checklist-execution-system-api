@@ -14,6 +14,8 @@ import {
 import { NotesService, TagMode } from './notes.service';
 import { CreateNoteDto } from './dto/create-note.dto';
 import { UpdateNoteDto } from './dto/update-note.dto';
+import { CreateNoteVersionDto } from './dto/create-note-version.dto';
+import { GenerateNoteDto } from './dto/generate-note.dto';
 
 @Controller('notes')
 export class NotesController {
@@ -71,5 +73,46 @@ export class NotesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.notesService.remove(id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Version endpoints
+  // ---------------------------------------------------------------------------
+
+  @Get(':id/versions')
+  listVersions(@Param('id', ParseIntPipe) id: number) {
+    return this.notesService.listVersions(id);
+  }
+
+  @Post(':id/versions')
+  @HttpCode(HttpStatus.CREATED)
+  createVersion(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateNoteVersionDto,
+  ) {
+    return this.notesService.createVersion(id, dto);
+  }
+
+  @Post(':id/versions/:versionId/restore')
+  @HttpCode(HttpStatus.OK)
+  restoreVersion(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('versionId', ParseIntPipe) versionId: number,
+  ) {
+    return this.notesService.restoreVersion(id, versionId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Variable generation (ephemeral)
+  // ---------------------------------------------------------------------------
+
+  @Post(':id/generate')
+  @HttpCode(HttpStatus.OK)
+  async generate(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: GenerateNoteDto,
+  ) {
+    const rendered = await this.notesService.generate(id, dto.variables ?? {});
+    return { rendered };
   }
 }

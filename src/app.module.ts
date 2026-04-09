@@ -19,6 +19,7 @@ import { Note } from './note/note.entity';
 import { NoteVersion } from './note/note-version.entity';
 import { NoteTag } from './note/note-tag.entity';
 import { NoteModule } from './note/note.module';
+import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { NoteModule } from './note/note.module';
     DashboardModule,
     ReminderModule,
     NoteModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

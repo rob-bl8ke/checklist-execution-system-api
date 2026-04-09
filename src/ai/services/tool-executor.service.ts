@@ -1,8 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-
-const execFileAsync = promisify(execFile);
+import { spawn } from 'child_process';
 
 export interface ToolExecutionOptions {
   /** Timeout in milliseconds (default: 30 000). */
@@ -14,7 +11,7 @@ export interface ToolExecutionOptions {
 @Injectable()
 export class ToolExecutorService {
   /**
-   * Safely executes an external binary using execFile (no shell expansion).
+   * Safely executes an external binary using spawn (no shell expansion).
    * Prompt text is written to the process's stdin.
    *
    * @param binaryPath  Absolute or PATH-resolved binary name.
@@ -22,7 +19,7 @@ export class ToolExecutorService {
    * @param stdin       Text fed to the process via stdin.
    * @param options     Timeout and output-size limits.
    */
-  async execute(
+  execute(
     binaryPath: string,
     args: string[],
     stdin: string,
@@ -31,14 +28,58 @@ export class ToolExecutorService {
     const timeoutMs = options.timeoutMs ?? 30_000;
     const maxOutputBytes = options.maxOutputBytes ?? 2 * 1024 * 1024;
 
-    const { stdout } = await execFileAsync(binaryPath, args, {
-      input: stdin,
-      timeout: timeoutMs,
-      maxBuffer: maxOutputBytes,
-      // Never use shell: always false to prevent injection
-      shell: false,
-    });
+    return new Promise<string>((resolve, reject) => {
+      // shell: false is the default for spawn — no shell injection possible
+      const child = spawn(binaryPath, args, { shell: false });
 
-    return stdout;
+      const chunks: Buffer[] = [];
+      let totalBytes = 0;
+      let timedOut = false;
+
+      const timer = setTimeout(() => {
+        timedOut = true;
+        child.kill();
+        reject(new Error(`Process timed out after ${timeoutMs}ms: ${binaryPath}`));
+      }, timeoutMs);
+
+      child.stdout.on('data', (chunk: Buffer) => {
+        totalBytes += chunk.length;
+        if (totalBytes > maxOutputBytes) {
+          child.kill();
+          reject(new Error(`Process output exceeded ${maxOutputBytes} bytes`));
+          return;
+        }
+        chunks.push(chunk);
+      });
+
+      const errChunks: Buffer[] = [];
+      child.stderr.on('data', (chunk: Buffer) => errChunks.push(chunk));
+
+      child.on('error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        if (timedOut) return;
+        if (code !== 0) {
+          const stderr = Buffer.concat(errChunks).toString('utf8');
+          reject(
+            new Error(
+              `Process exited with code ${code}: ${binaryPath}\n${stderr}`,
+            ),
+          );
+          return;
+        }
+        resolve(Buffer.concat(chunks).toString('utf8'));
+      });
+
+      // Write prompt to stdin then close the stream
+      if (stdin) {
+        child.stdin.write(stdin, 'utf8');
+      }
+      child.stdin.end();
+    });
   }
 }

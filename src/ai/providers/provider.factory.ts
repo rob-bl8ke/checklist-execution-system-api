@@ -18,7 +18,7 @@ export class ProviderFactory {
     private readonly claudeCode: ClaudeCodeProvider,
     private readonly copilot: CopilotProvider,
   ) {
-    this.registry = new Map([
+    this.registry = new Map<AiProviderKey, IAiProvider>([
       [AiProviderKey.ANTHROPIC_API, anthropic],
       [AiProviderKey.OPENAI_API, openai],
       [AiProviderKey.GOOGLE_API, google],

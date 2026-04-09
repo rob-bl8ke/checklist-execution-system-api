@@ -23,6 +23,18 @@ export const MAX_BODY_SIZE = 50 * 1024;
  *  - After one attempt to strip markdown fences
  *  - The proposal body is empty after trimming
  */
+interface RawProposalShape {
+  proposedBody?: unknown;
+  rationale?: unknown;
+  confidence?: unknown;
+}
+
+interface RawResponseShape {
+  mode?: unknown;
+  assistantMessage?: unknown;
+  proposal?: RawProposalShape | null;
+}
+
 export function parseStructuredResponse(raw: string): ParsedProviderResponse {
   const json = tryParseJson(raw) ?? tryExtractFencedJson(raw);
 
@@ -30,26 +42,31 @@ export function parseStructuredResponse(raw: string): ParsedProviderResponse {
     return { assistantMessage: raw };
   }
 
+  const typed = json as RawResponseShape;
+
   const msg =
-    typeof json.assistantMessage === 'string' && json.assistantMessage.trim()
-      ? json.assistantMessage
+    typeof typed.assistantMessage === 'string' && typed.assistantMessage.trim()
+      ? typed.assistantMessage
       : raw;
 
+  const proposal = typed.proposal;
   if (
-    json.mode === 'body_proposal' &&
-    json.proposal?.proposedBody?.trim()
+    typed.mode === 'body_proposal' &&
+    proposal != null &&
+    typeof proposal.proposedBody === 'string' &&
+    proposal.proposedBody.trim()
   ) {
     const confidence =
-      typeof json.proposal.confidence === 'number'
-        ? Math.min(1, Math.max(0, json.proposal.confidence))
+      typeof proposal.confidence === 'number'
+        ? Math.min(1, Math.max(0, proposal.confidence))
         : 0;
 
     return {
       assistantMessage: msg,
       proposal: {
         proposalType: 'REPLACE_BODY',
-        proposedBody: json.proposal.proposedBody.trim(),
-        rationale: json.proposal.rationale ?? '',
+        proposedBody: proposal.proposedBody.trim(),
+        rationale: typeof proposal.rationale === 'string' ? proposal.rationale : '',
         confidence,
       },
     };

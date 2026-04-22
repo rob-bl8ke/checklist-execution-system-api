@@ -20,6 +20,9 @@ import { NoteVersion } from './note/note-version.entity';
 import { NoteTag } from './note/note-tag.entity';
 import { NoteModule } from './note/note.module';
 import { AiModule } from './ai/ai.module';
+import { AiSession } from './ai/entities/ai-session.entity';
+import { AiMessage } from './ai/entities/ai-message.entity';
+import { AiProposal } from './ai/entities/ai-proposal.entity';
 
 @Module({
   imports: [
@@ -37,6 +40,9 @@ import { AiModule } from './ai/ai.module';
         Note,
         NoteVersion,
         NoteTag,
+        AiSession,
+        AiMessage,
+        AiProposal,
       ],
       synchronize: false,
       migrations: ['dist/database/migrations/*.js'],

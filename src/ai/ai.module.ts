@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { AiProviderKey } from './enums/ai-provider-key.enum';
 import { AiTargetType } from './enums/ai-target-type.enum';
+import { AiSession } from './entities/ai-session.entity';
+import { AiMessage } from './entities/ai-message.entity';
+import { AiProposal } from './entities/ai-proposal.entity';
 import { ProviderCapabilitiesService } from './services/provider-capabilities.service';
 import { ToolExecutorService } from './services/tool-executor.service';
 import { ApiClientFactoryService } from './services/api-client-factory.service';
@@ -17,7 +21,7 @@ import { ProviderFactory } from './providers/provider.factory';
 export { AiProviderKey, AiTargetType };
 
 @Module({
-  imports: [],
+  imports: [TypeOrmModule.forFeature([AiSession, AiMessage, AiProposal])],
   controllers: [],
   providers: [
     ProviderCapabilitiesService,
@@ -34,6 +38,7 @@ export { AiProviderKey, AiTargetType };
     ProviderFactory,
   ],
   exports: [
+    TypeOrmModule,
     ProviderCapabilitiesService,
     ToolExecutorService,
     ApiClientFactoryService,

@@ -75,9 +75,15 @@ export class ToolExecutorService {
         resolve(Buffer.concat(chunks).toString('utf8'));
       });
 
-      // Write prompt to stdin then close the stream
-      if (stdin) {
-        child.stdin.write(stdin, 'utf8');
+      // Cap stdin at 50 KB to avoid oversized payloads to CLI tools
+      const MAX_STDIN_BYTES = 50 * 1024;
+      const stdinToWrite =
+        stdin && Buffer.byteLength(stdin, 'utf8') > MAX_STDIN_BYTES
+          ? Buffer.from(stdin, 'utf8').subarray(0, MAX_STDIN_BYTES).toString('utf8')
+          : stdin;
+
+      if (stdinToWrite) {
+        child.stdin.write(stdinToWrite, 'utf8');
       }
       child.stdin.end();
     });

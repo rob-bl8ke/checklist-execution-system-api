@@ -117,7 +117,7 @@ describe('PromptRunnerService', () => {
     };
 
     mockCapabilities.getCapabilities.mockReturnValue(availableCapabilities);
-    mockCapabilities.defaultProviderKey = null;
+    Object.defineProperty(mockCapabilities, 'defaultProviderKey', { value: null, writable: true });
     mockFactory.getProvider.mockReturnValue(mockProvider);
 
     await service.run(makeRequest());
@@ -135,7 +135,7 @@ describe('PromptRunnerService', () => {
     };
 
     mockCapabilities.getCapabilities.mockReturnValue(availableCapabilities);
-    mockCapabilities.defaultProviderKey = AiProviderKey.OPENAI_API;
+    Object.defineProperty(mockCapabilities, 'defaultProviderKey', { value: AiProviderKey.OPENAI_API, writable: true });
     mockFactory.getProvider.mockReturnValue(mockProvider);
 
     await service.run(makeRequest());

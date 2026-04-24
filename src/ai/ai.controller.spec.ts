@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe, BadRequestException, NotFoundException, ServiceUnavailableException, GatewayTimeoutException } from '@nestjs/common';
+import { INestApplication, ValidationPipe, BadRequestException, ConflictException, NotFoundException, ServiceUnavailableException, GatewayTimeoutException } from '@nestjs/common';
 import request from 'supertest';
 import { AiController } from './ai.controller';
 import { AiService } from './ai.service';
@@ -63,6 +63,8 @@ describe('AiController', () => {
       clearSession: jest.fn().mockResolvedValue(undefined),
       sendMessage: jest.fn().mockResolvedValue(mockInteractionResponse),
       runAction: jest.fn().mockResolvedValue(mockInteractionResponse),
+      applyProposal: jest.fn(),
+      revertProposal: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -263,6 +265,95 @@ describe('AiController', () => {
         .send({ userInstruction: 'Focus on security issues.' })
         .expect(201);
       expect(aiService.runAction).toHaveBeenCalledWith('NOTE', 10, 'review-code', expect.objectContaining({ userInstruction: 'Focus on security issues.' }));
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // POST /api/ai/proposals/:proposalId/apply
+  // ---------------------------------------------------------------------------
+
+  describe('POST /api/ai/proposals/:proposalId/apply', () => {
+    const mockMutationResponse = {
+      proposal: { id: 1, status: 'APPLIED', appliedAt: '2026-04-24T12:00:00.000Z', revertedAt: null },
+      target: { targetType: 'NOTE', targetId: 5 },
+      noteVersion: { id: 42, versionNumber: 1, createdAt: '2026-04-24T12:00:00.000Z' },
+    };
+
+    it('returns 200 with mutation response on success', async () => {
+      aiService.applyProposal!.mockResolvedValue(mockMutationResponse as any);
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/proposals/1/apply')
+        .expect(200);
+      expect(res.body).toEqual(mockMutationResponse);
+      expect(aiService.applyProposal).toHaveBeenCalledWith(1);
+    });
+
+    it('returns 404 when proposal is not found', async () => {
+      aiService.applyProposal!.mockRejectedValueOnce(new NotFoundException('Proposal 999 not found'));
+      await request(app.getHttpServer())
+        .post('/api/ai/proposals/999/apply')
+        .expect(404);
+    });
+
+    it('returns 409 when proposal status is invalid for apply', async () => {
+      aiService.applyProposal!.mockRejectedValueOnce(new ConflictException("Proposal 1 cannot be applied: status is 'APPLIED' (must be PENDING)"));
+      await request(app.getHttpServer())
+        .post('/api/ai/proposals/1/apply')
+        .expect(409);
+    });
+
+    it('returns 409 for stale proposal (note body changed)', async () => {
+      aiService.applyProposal!.mockRejectedValueOnce(new ConflictException('Proposal 1 is stale: the note body has been modified since the proposal was created'));
+      await request(app.getHttpServer())
+        .post('/api/ai/proposals/1/apply')
+        .expect(409);
+    });
+
+    it('returns 400 for non-integer proposalId', async () => {
+      await request(app.getHttpServer())
+        .post('/api/ai/proposals/not-a-number/apply')
+        .expect(400);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // POST /api/ai/proposals/:proposalId/revert
+  // ---------------------------------------------------------------------------
+
+  describe('POST /api/ai/proposals/:proposalId/revert', () => {
+    const mockMutationResponse = {
+      proposal: { id: 1, status: 'REVERTED', appliedAt: '2026-04-24T10:00:00.000Z', revertedAt: '2026-04-24T12:00:00.000Z' },
+      target: { targetType: 'NOTE', targetId: 5 },
+      noteVersion: { id: 43, versionNumber: 2, createdAt: '2026-04-24T12:00:00.000Z' },
+    };
+
+    it('returns 200 with mutation response on success', async () => {
+      aiService.revertProposal!.mockResolvedValue(mockMutationResponse as any);
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/proposals/1/revert')
+        .expect(200);
+      expect(res.body).toEqual(mockMutationResponse);
+      expect(aiService.revertProposal).toHaveBeenCalledWith(1);
+    });
+
+    it('returns 404 when proposal is not found', async () => {
+      aiService.revertProposal!.mockRejectedValueOnce(new NotFoundException('Proposal 999 not found'));
+      await request(app.getHttpServer())
+        .post('/api/ai/proposals/999/revert')
+        .expect(404);
+    });
+
+    it('returns 409 when proposal status is invalid for revert (e.g. PENDING)', async () => {
+      aiService.revertProposal!.mockRejectedValueOnce(new ConflictException("Proposal 1 cannot be reverted: status is 'PENDING' (must be APPLIED)"));
+      await request(app.getHttpServer())
+        .post('/api/ai/proposals/1/revert')
+        .expect(409);
+    });
+
+    it('returns 400 for non-integer proposalId', async () => {
+      await request(app.getHttpServer())
+        .post('/api/ai/proposals/not-a-number/revert')
+        .expect(400);
     });
   });
 });

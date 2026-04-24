@@ -19,8 +19,10 @@ import { RunAiActionDto } from './dto/run-ai-action.dto';
 import { AiSessionResponse, AiCapabilitiesSummary } from './interfaces/ai-session-response.interface';
 import { AiInteractionResponse } from './interfaces/ai-interaction-response.interface';
 import { AiProviderStatusResponse } from './interfaces/ai-provider-status-response.interface';
+import { AiProposalMutationResponse } from './interfaces/ai-proposal-mutation-response.interface';
 import { PRESET_INSTRUCTIONS } from './prompts/prompt.constants';
 import { Note } from '../note/note.entity';
+import { ProposalApplicationService } from './services/proposal-application.service';
 
 const SUPPORTED_TARGET_TYPES = new Set<string>(Object.values(AiTargetType));
 const SUPPORTED_ACTION_KEYS = new Set(Object.keys(PRESET_INSTRUCTIONS));
@@ -38,6 +40,7 @@ export class AiService {
     private readonly noteRepo: Repository<Note>,
     private readonly capabilities: ProviderCapabilitiesService,
     private readonly promptRunner: PromptRunnerService,
+    private readonly proposalApplicationService: ProposalApplicationService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -273,6 +276,18 @@ export class AiService {
 
     const cap = this.capabilities.getCapabilities(providerKey);
     return this.buildInteractionResponse(session, result!, savedProposal, cap, providerKey);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Proposal apply / revert (delegated to ProposalApplicationService)
+  // ---------------------------------------------------------------------------
+
+  applyProposal(proposalId: number): Promise<AiProposalMutationResponse> {
+    return this.proposalApplicationService.applyProposal(proposalId);
+  }
+
+  revertProposal(proposalId: number): Promise<AiProposalMutationResponse> {
+    return this.proposalApplicationService.revertProposal(proposalId);
   }
 
   // ---------------------------------------------------------------------------

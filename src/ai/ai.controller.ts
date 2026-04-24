@@ -79,4 +79,24 @@ export class AiController {
   ) {
     return this.aiService.runAction(targetType, targetId, actionKey, dto);
   }
+
+  // ---------------------------------------------------------------------------
+  // POST /api/ai/proposals/:proposalId/apply
+  // ---------------------------------------------------------------------------
+
+  @Post('proposals/:proposalId/apply')
+  @HttpCode(HttpStatus.OK)
+  applyProposal(@Param('proposalId', ParseIntPipe) proposalId: number) {
+    return this.aiService.applyProposal(proposalId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // POST /api/ai/proposals/:proposalId/revert
+  // ---------------------------------------------------------------------------
+
+  @Post('proposals/:proposalId/revert')
+  @HttpCode(HttpStatus.OK)
+  revertProposal(@Param('proposalId', ParseIntPipe) proposalId: number) {
+    return this.aiService.revertProposal(proposalId);
+  }
 }

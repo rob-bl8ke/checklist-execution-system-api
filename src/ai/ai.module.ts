@@ -6,6 +6,7 @@ import { AiSession } from './entities/ai-session.entity';
 import { AiMessage } from './entities/ai-message.entity';
 import { AiProposal } from './entities/ai-proposal.entity';
 import { Note } from '../note/note.entity';
+import { NoteVersion } from '../note/note-version.entity';
 import { AiController } from './ai.controller';
 import { AiService } from './ai.service';
 import { ProviderCapabilitiesService } from './services/provider-capabilities.service';
@@ -20,14 +21,16 @@ import { GoogleProvider } from './providers/google.provider';
 import { ClaudeCodeProvider } from './providers/claude-code.provider';
 import { CopilotProvider } from './providers/copilot.provider';
 import { ProviderFactory } from './providers/provider.factory';
+import { ProposalApplicationService } from './services/proposal-application.service';
 
 export { AiProviderKey, AiTargetType };
 
 @Module({
-  imports: [TypeOrmModule.forFeature([AiSession, AiMessage, AiProposal, Note])],
+  imports: [TypeOrmModule.forFeature([AiSession, AiMessage, AiProposal, Note, NoteVersion])],
   controllers: [AiController],
   providers: [
     AiService,
+    ProposalApplicationService,
     ProviderCapabilitiesService,
     ToolExecutorService,
     ApiClientFactoryService,
@@ -44,6 +47,7 @@ export { AiProviderKey, AiTargetType };
   exports: [
     TypeOrmModule,
     AiService,
+    ProposalApplicationService,
     ProviderCapabilitiesService,
     ToolExecutorService,
     ApiClientFactoryService,

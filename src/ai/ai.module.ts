@@ -5,6 +5,9 @@ import { AiTargetType } from './enums/ai-target-type.enum';
 import { AiSession } from './entities/ai-session.entity';
 import { AiMessage } from './entities/ai-message.entity';
 import { AiProposal } from './entities/ai-proposal.entity';
+import { Note } from '../note/note.entity';
+import { AiController } from './ai.controller';
+import { AiService } from './ai.service';
 import { ProviderCapabilitiesService } from './services/provider-capabilities.service';
 import { ToolExecutorService } from './services/tool-executor.service';
 import { ApiClientFactoryService } from './services/api-client-factory.service';
@@ -21,9 +24,10 @@ import { ProviderFactory } from './providers/provider.factory';
 export { AiProviderKey, AiTargetType };
 
 @Module({
-  imports: [TypeOrmModule.forFeature([AiSession, AiMessage, AiProposal])],
-  controllers: [],
+  imports: [TypeOrmModule.forFeature([AiSession, AiMessage, AiProposal, Note])],
+  controllers: [AiController],
   providers: [
+    AiService,
     ProviderCapabilitiesService,
     ToolExecutorService,
     ApiClientFactoryService,
@@ -39,6 +43,7 @@ export { AiProviderKey, AiTargetType };
   ],
   exports: [
     TypeOrmModule,
+    AiService,
     ProviderCapabilitiesService,
     ToolExecutorService,
     ApiClientFactoryService,

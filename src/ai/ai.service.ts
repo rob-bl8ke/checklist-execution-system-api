@@ -423,6 +423,8 @@ export class AiService {
       status: proposal.status,
       proposalType: proposal.proposalType,
       fieldName: proposal.fieldName,
+      currentValue: proposal.currentValue,
+      proposedValue: proposal.proposedValue,
       rationale: proposal.rationale,
       confidence: proposal.confidence,
       createdAt: proposal.createdAt?.toISOString(),

@@ -35,6 +35,8 @@ export interface AiProposalData {
   status: 'PENDING' | 'APPLIED' | 'REJECTED' | 'REVERTED';
   proposalType: string;
   fieldName: string;
+  currentValue: string;
+  proposedValue: string;
   rationale: string | null;
   confidence: number | null;
   createdAt: string;
